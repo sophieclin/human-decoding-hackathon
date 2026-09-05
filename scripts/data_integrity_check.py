@@ -16,7 +16,9 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.seeg_io import load_seeg, viable_channels
+from utils.seeg_io import drop_malformed_trials, load_seeg, viable_channels
+
+MIN_TRIAL_SAMPLES = 500  # drop obviously truncated/corrupt trials before counting
 
 
 def main():
@@ -30,6 +32,15 @@ def main():
     print(f"Loading {data_path}...")
     channels = load_seeg(data_path)
     print(f"Loaded {len(channels)} channels.")
+
+    n_trials_before = sum(len(c.trials) for c in channels)
+    channels = drop_malformed_trials(channels, min_samples=MIN_TRIAL_SAMPLES)
+    n_trials_after = sum(len(c.trials) for c in channels)
+    if n_trials_after < n_trials_before:
+        print(
+            f"Dropped {n_trials_before - n_trials_after} corrupt/truncated trial(s) "
+            f"(< {MIN_TRIAL_SAMPLES} samples)."
+        )
 
     kept = viable_channels(
         channels, min_trials_per_class=min_trials_per_class, require_all_classes=True

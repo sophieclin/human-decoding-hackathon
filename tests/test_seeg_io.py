@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from tests.fixtures import build_fixture
-from utils.seeg_io import load_seeg, viable_channels
+from utils.seeg_io import drop_malformed_trials, load_seeg, viable_channels
 
 
 def make_trial(class_label, n_samples=8, offset=0.0):
@@ -103,3 +103,61 @@ def test_viable_channels_require_all_classes(two_channel_fixture):
         channels, min_trials_per_class=1, require_all_classes=True, expected_classes={1, 2}
     )
     assert [c.channel_label for c in kept] == ["LFP3"]
+
+
+def test_drop_malformed_trials_removes_short_trials(tmp_path):
+    channels = load_seeg(
+        _fixture_with_one_corrupt_trial(tmp_path)
+    )
+    ch0 = channels[0]
+    assert len(ch0.trials) == 3  # 2 good trials + 1 corrupt
+
+    cleaned = drop_malformed_trials(channels, min_samples=5)
+    assert len(cleaned[0].trials) == 2
+    assert all(len(t.trial_data) >= 5 for t in cleaned[0].trials)
+
+
+def _fixture_with_one_corrupt_trial(tmp_path):
+    path = tmp_path / "corrupt_fixture.mat"
+    corrupt_trial = make_trial(1, n_samples=2)
+    channels = [
+        {
+            "sub": "sub-01",
+            "task": "Spatial",
+            "channel": 1,
+            "channel_label": "LFP1",
+            "hemisphere": "LEFT",
+            "subregion": "Region",
+            "prefrontal_subdiv": "Ventral",
+            "trials": [make_trial(1), make_trial(2), corrupt_trial],
+        }
+    ]
+    build_fixture(str(path), channels)
+    return str(path)
+
+
+def test_drop_malformed_trials_checks_every_referencing_field(tmp_path):
+    # A trial can have a full-length trial_data/common but a truncated Laplacian
+    # field (observed in the real dataset) -- all three must be checked.
+    path = tmp_path / "partial_corrupt_fixture.mat"
+    good_trial = make_trial(1, n_samples=8)
+    partially_corrupt_trial = make_trial(1, n_samples=8)
+    partially_corrupt_trial["laplacian"] = partially_corrupt_trial["laplacian"][:2]
+
+    channels = [
+        {
+            "sub": "sub-01",
+            "task": "Spatial",
+            "channel": 1,
+            "channel_label": "LFP1",
+            "hemisphere": "LEFT",
+            "subregion": "Region",
+            "prefrontal_subdiv": "Ventral",
+            "trials": [good_trial, partially_corrupt_trial],
+        }
+    ]
+    build_fixture(str(path), channels)
+
+    channels = load_seeg(str(path))
+    cleaned = drop_malformed_trials(channels, min_samples=5)
+    assert len(cleaned[0].trials) == 1

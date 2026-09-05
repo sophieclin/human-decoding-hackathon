@@ -19,7 +19,7 @@ Two reference patterns show up in the real files:
 how many levels of wrapping a given field uses.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import h5py
 import numpy as np
@@ -130,3 +130,23 @@ def viable_channels(
 
         kept.append(c)
     return kept
+
+
+def drop_malformed_trials(channels, min_samples):
+    """Drop trials whose signal is shorter than `min_samples`.
+
+    Real recordings can contain corrupted/truncated trials (observed in the wild: a
+    2-sample "trial" instead of the expected ~3000+ samples) that would otherwise
+    crash or silently corrupt downstream filtering and feature extraction.
+    """
+    cleaned = []
+    for c in channels:
+        good_trials = [
+            t
+            for t in c.trials
+            if len(t.trial_data) >= min_samples
+            and len(t.common) >= min_samples
+            and len(t.laplacian) >= min_samples
+        ]
+        cleaned.append(replace(c, trials=good_trials))
+    return cleaned

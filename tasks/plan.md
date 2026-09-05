@@ -38,8 +38,15 @@ Verified against the real Spatial dataset (`Prefrontal_Delay_3_6_sec_Session.mat
 - Trials-per-class varies wildly per channel (channel 0: 35 trials, uneven per class;
   channel 50: 15 trials, uneven; channel 100: 44 trials).
 - Filtering to channels with **all 9 classes present AND >= 3 trials per class** (the paper's
-  own standardization) keeps **202 of 462 channels** — this is the number Task 1's
-  acceptance criteria will check against.
+  own standardization) keeps **202 of 462 channels** before trial-level corruption is
+  accounted for. After Task 3 uncovered that individual trials can have corrupted/truncated
+  signal fields (see below), the corrected count is **200 of 462**.
+- **239 trials across the dataset have a corrupted/truncated `TrialData`, `Common`, or
+  `Laplacian` field** (as short as 2 samples instead of 3072) — and a field can be corrupted
+  independently of the others within the same trial (one observed trial had full-length
+  `TrialData`/`Common` but a 2-sample `Laplacian`). Any code that touches trial signals must
+  filter these out first (`utils.seeg_io.drop_malformed_trials`), or it will crash (bandpass
+  filtering) or silently corrupt results.
 
 ## Architecture Decisions
 
